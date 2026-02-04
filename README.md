@@ -10,7 +10,7 @@
 
 ---
 
-A **real-time ECI (Earth-Centered Inertial)** simulation visualizing orbital mechanics, precession, and day cycles from a geostatic perspective.  
+An **ECI (Earth-Centered Inertial)** simulation visualizing orbital mechanics, precession, and day cycles from a geostatic perspective.  
 Built entirely in **HTML, CSS, and JavaScript** — no dependencies, no frameworks.
 
 ---
