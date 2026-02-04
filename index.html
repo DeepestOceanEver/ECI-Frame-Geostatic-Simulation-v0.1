@@ -1,0 +1,1385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>ECI Frame (Geostatic Simulation)</title>
+<style>
+  :root{
+    --bg:#0a142b; --fg:#e6edf3; --muted:#9aa4b2; --panel:#0b1226; --panel2:#0e1733;
+    --accent:#6bc2ff; --grid:#1a2f59;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  .wrap{display:grid;grid-template-rows:auto 1fr;min-height:100%}
+
+  header{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:10px 16px;background:linear-gradient(180deg,#0b1226,#070d1e);border-bottom:1px solid #172042}
+  header h1{font-size:14px;margin:0;font-weight:700;letter-spacing:.25px;color:#bcd9ff;text-transform:uppercase}
+  .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+  .control{background:var(--panel);border:1px solid #1b264a;padding:6px 10px;border-radius:10px;display:flex;align-items:center;gap:8px}
+  .control label{font-size:11px;color:var(--muted)}
+  select,input[type="range"]{accent-color:var(--accent);background:var(--panel2);color:var(--fg);border:1px solid #20315e;border-radius:8px;padding:4px 6px}
+  button{background:var(--accent);color:#00111f;border:none;padding:8px 12px;border-radius:10px;font-weight:700;cursor:pointer}
+  button.secondary{background:#223158;color:var(--fg);border:1px solid #2b3b6b}
+
+  .num{
+    width:86px; padding:4px 6px; border-radius:8px; border:1px solid #20315e; background:var(--panel2); color:var(--fg);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    text-align:right;
+  }
+  .unit{color:var(--muted); font-size:11px; margin-left:2px; margin-right:4px;}
+
+  .control.simdate{flex:0 0 auto}
+  .simdate-text{
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    display:inline-block;
+    text-align:right;
+  }
+
+  main{position:relative}
+  canvas{
+    display:block;width:100%;height:calc(100vh - 88px);
+    background:transparent;
+    cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none
+  }
+  canvas:active{cursor:grabbing}
+
+  /* Mobile drawer */
+  .drawer{position:fixed;left:0;right:0;bottom:0;z-index:40;display:none;}
+  .drawer.open{display:block;}
+  .drawer .panel{
+    position:relative;background:rgba(10,19,49,.92);backdrop-filter:blur(6px);
+    border-top:1px solid #1b2b56;border-left:1px solid #1b2b56;border-right:1px solid #1b2b56;
+    border-radius:16px 16px 0 0;padding:14px 14px calc(14px + env(safe-area-inset-bottom,0px));
+  }
+  .drawer .panel .handle{
+    position:absolute;left:50%;top:-12px;transform:translateX(-50%);
+    background:#0d1b36;border:1px solid #28406e;border-radius:999px;padding:6px 16px;color:#cfe6ff;font-weight:700;z-index:101;
+  }
+  .drawer .panel .handle .pill{display:block;width:48px;height:4px;border-radius:999px;background:#2b4577;opacity:.9}
+  .drawer .row{display:flex;gap:10px;align-items:center;margin:10px 0;flex-wrap:wrap}
+  .drawer .control{background:#0e1733;border:1px solid #1b2b56}
+  .drawer .btnbar{display:flex;gap:10px;flex-wrap:wrap}
+
+  .nub{
+    position:fixed;left:50%;bottom:10px;transform:translateX(-50%);
+    background:#0d1b36;border:1px solid #28406e;border-radius:999px;padding:10px 18px;color:#cfe6ff;font-weight:700;z-index:41;
+  }
+  .nub .pill{display:block;width:54px;height:6px;border-radius:999px;background:#2b4577;opacity:.95}
+  .nub.hide{display:none;}
+
+  @media (max-width:720px){ header{display:none} canvas{height:100vh} }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>ECI Frame (Geostatic Simulation)</h1>
+      <div class="controls">
+        <div class="control">
+          <label for="model">Motion</label>
+          <select id="model">
+            <option value="kepler" selected>Kepler 3D Inclinations</option>
+            <option value="circular">Circular 2D Coplanar</option>
+          </select>
+        </div>
+
+        <div class="control">
+          <label for="dayMode">Day Cycle</label>
+          <select id="dayMode">
+            <option value="off" selected>Off</option>
+            <option value="solar">Solar (24h)</option>
+            <option value="sidereal">Sidereal (23h56m)</option>
+          </select>
+        </div>
+
+        <!-- NEW: visual precession scale -->
+        <div class="control" title="Scale factor to visualize precession">
+          <label for="precMult">Precession</label>
+          <select id="precMult">
+            <option value="1" >×1 (accurate)</option>
+            <option value="5">×5</option>
+            <option value="10">×10</option>
+            <option value="25">×25</option>
+            <option value="50">×50</option>
+            <option value="100">×100</option>
+            <option value="250">×250</option>
+            <option value="500">×500</option>
+            <option value="1000" selected>×1000</option>
+          </select>
+        </div>
+
+        <div class="control">
+          <label for="starMode">Distance</label>
+          <select id="starMode">
+            <option value="reduced">Reduced (×1/42633)</option>
+            <option value="consensus" selected>Consensus (Light-years)</option>
+          </select>
+        </div>
+
+        <div class="control">
+          <label for="speed">Speed</label>
+          <input id="speed" type="range" min="0.01" max="2615" step="0.01" value="27.32">
+          <input id="speedNum" class="num" type="number" min="0.01" max="2615" step="0.01" value="27.32"><span class="unit">days/sec</span>
+        </div>
+        <div class="control">
+          <label for="trail">Trail Length</label>
+          <input id="trail" type="range" min="5" max="10760" step="5" value="365">
+          <input id="trailNum" class="num" type="number" min="5" max="10760" step="1" value="365"><span class="unit">days</span>
+        </div>
+        <div class="control">
+          <label for="scale">Zoom Scale</label>
+          <input id="scale" type="range" min="0.5" max="800" step="0.000001" value="8.946">
+          <input id="scaleNum" class="num" type="text" value="8.946"><span class="unit">×</span>
+        </div>
+        <div class="control">
+          <label><input id="toggleTrails" type="checkbox" checked> Trails</label>
+          <label><input id="toggleOrbits" type="checkbox" checked> Orbits</label>
+          <label><input id="toggleLabels" type="checkbox" checked> Labels</label>
+          <label><input id="toggleGrid" type="checkbox" checked> Grid</label>
+          <label><input id="toggleStars" type="checkbox" checked> Stars</label>
+          <label><input id="toggleSunGrade" type="checkbox"> Sun Grade</label>
+          <label><input id="toggleLock" type="checkbox" checked> Earth Lock</label>
+        </div>
+
+        <div class="control simdate" title="J2000 + simulated days (UTC/TT)">
+          <label>Date</label>
+          <span id="simDate" class="simdate-text">—</span>
+        </div>
+
+        <button id="playPause">⏯</button>
+        <button id="reset" class="secondary">↺</button>
+        <button id="snap" class="secondary">Photo</button>
+        <button id="fsDesk" class="secondary">F11</button>
+      </div>
+    </header>
+
+    <main><canvas id="sim"></canvas></main>
+  </div>
+
+  <!-- Mobile drawer -->
+  <div class="drawer" id="drawer" hidden>
+    <div class="panel">
+      <button class="handle" id="drawerHandle" aria-label="Close controls"><span class="pill"></span></button>
+      <div class="row" style="justify-content:center;margin-top:4px;font-weight:700;color:#bcd9ff">Controls</div>
+
+      <div class="row">
+        <div class="control">
+          <label for="mModel">Motion</label>
+          <select id="mModel">
+            <option value="kepler" selected>Kepler 3D</option>
+            <option value="circular">Circular 2D</option>
+          </select>
+        </div>
+
+        <div class="control">
+          <label for="mDayMode">Day Cycle</label>
+          <select id="mDayMode">
+            <option value="off" selected>Off</option>
+            <option value="solar">Solar</option>
+            <option value="sidereal">Sidereal</option>
+          </select>
+        </div>
+
+        <div class="control" title="Scales precession when Day Cycle is Off (visual only)">
+          <label for="mPrecMult">Precession</label>
+          <select id="mPrecMult">
+            <option value="1">×1</option>
+            <option value="5">×5</option>
+            <option value="10">×10</option>
+            <option value="25">×25</option>
+            <option value="50">×50</option>
+            <option value="100">×100</option>
+            <option value="250">×250</option>
+            <option value="500">×500</option>
+            <option value="1000" selected>×1000</option>
+          </select>
+        </div>
+
+        <div class="control">
+          <label for="mStarMode">Distance</label>
+          <select id="mStarMode">
+            <option value="reduced">Reduced (×1/42633)</option>
+            <option value="consensus" selected>Consensus (Light-years)</option>
+          </select>
+        </div>
+
+        <div class="control">
+          <label for="mSpeed">Speed</label>
+          <input id="mSpeed" type="range" min="0.01" max="2615" step="0.01" value="27.32">
+          <input id="mSpeedNum" class="num" type="number" min="0.01" max="2615" step="0.01" value="27.32"><span class="unit">days/sec</span>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="control">
+          <label for="mTrail">Trail Length</label>
+          <input id="mTrail" type="range" min="5" max="10760" step="5" value="365">
+          <input id="mTrailNum" class="num" type="number" min="5" max="10760" step="1" value="365"><span class="unit">days</span>
+        </div>
+        <div class="control">
+          <label for="mScale">Zoom Scale</label>
+          <input id="mScale" type="range" min="0.5" max="800" step="0.000001" value="8.946">
+          <input id="mScaleNum" class="num" type="text" value="8.946"><span class="unit">×</span>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="control"><label><input id="mTrails" type="checkbox" checked> Trails</label></div>
+        <div class="control"><label><input id="mOrbits" type="checkbox" checked> Orbits</label></div>
+        <div class="control"><label><input id="mLabels" type="checkbox" checked> Labels</label></div>
+        <div class="control"><label><input id="mGrid"   type="checkbox" checked> Grid</label></div>
+        <div class="control"><label><input id="mStars"  type="checkbox" checked> Stars</label></div>
+        <div class="control"><label><input id="mSunGrade" type="checkbox"> Sun Grade</label></div>
+        <div class="control"><label><input id="mEarthLock" type="checkbox" checked> Earth Lock</label></div>
+      </div>
+
+      <div class="row" style="justify-content:center">
+        <span id="mSimDate" class="simdate-text">—</span>
+      </div>
+
+      <div class="btnbar">
+        <button id="mPlayPause">⏯</button>
+        <button id="mReset" class="secondary">↺</button>
+        <button id="mSnap" class="secondary">Photo</button>
+        <button id="mFS" class="secondary">Fullscreen</button>
+      </div>
+    </div>
+  </div>
+
+  <button class="nub" id="nub" hidden aria-expanded="false"><span class="pill"></span></button>
+
+<script>
+(() => {
+  /* ======= Tunables / clamps ======= */
+  const TARGET_GRID_SPACING_PX = 80;
+  const MIN_LABEL_SPACING_PX   = 64;
+  const MAX_RINGS              = 40;
+  const LABEL_R_OFFSET_PX      = 12;
+  const BOUNDARY_LABEL_Y       = 10;
+
+  // Keep-out & thresholds
+  const EARTH_LABEL_KEEP_OUT_PX = 40;
+  const POINT_ONE_LY_LABEL_MIN_R_PX = 72;
+  const SUN_MARKERS_MIN_ORBIT_PX = 240;
+
+  // Moon visibility thresholds (mobile-friendly)
+  const MOON_RING_MIN_PX   = 16;
+  const MOON_LABEL_SHOW_MIN_PX = 28;     // Only show the "Moon" label beyond this radius
+  const MOON_GUIDE_MIN_PX  = 16;         // Show ≈0.002569 AU beyond this
+  const MOON_IGNORE_KEEP_OUT_MIN_PX = 26;// Ignore Earth keep-out for Moon/guide beyond this
+
+  // Zoom limits
+  const MIN_SCALE_FREE     = 0.000001;
+  const MIN_SCALE_DAY_OFF  = 0.00001;
+  const MIN_SCALE_REDUCED  = 0.014;
+  const MAX_SCALE          = 2500;
+  
+  // When stars dominate, hide planets/orbits/trails
+  const COSMOS_HIDE_SCALE = 0.02856; // existing threshold used while Day Cycle = Solar/Sidereal (cosmosFocus = true)
+  const DAYOFF_HIDE_SCALE = 0.0002;  // new threshold for Day Cycle = Off (tweak to taste)
+  
+  const MAX_TRAIL_DAYS = 10760;
+  const MAX_TRAIL_SAMPLES_PER_BODY = 30000;
+
+  /* ---------- DOM ---------- */
+  const canvas = document.getElementById('sim');
+  const ctx = canvas.getContext('2d', {alpha:false});
+
+  const modelSel = document.getElementById('model');
+
+  // Desktop controls
+  const speedEl  = document.getElementById('speed');
+  const speedNum = document.getElementById('speedNum');
+  const trailEl  = document.getElementById('trail');
+  const trailNum = document.getElementById('trailNum');
+  const scaleEl  = document.getElementById('scale');
+  const scaleNum = document.getElementById('scaleNum');
+  const precMultSel = document.getElementById('precMult');
+
+  const starModeSel = document.getElementById('starMode');
+
+  const toggleTrails=document.getElementById('toggleTrails');
+  const toggleOrbits=document.getElementById('toggleOrbits');
+  const toggleLabels=document.getElementById('toggleLabels');
+  const toggleGrid  =document.getElementById('toggleGrid');
+  const toggleStars =document.getElementById('toggleStars');
+  const toggleSunGrade=document.getElementById('toggleSunGrade');
+  const toggleLock  =document.getElementById('toggleLock');
+  const playPause=document.getElementById('playPause');
+  const resetBtn =document.getElementById('reset');
+  const snapBtn  =document.getElementById('snap');
+  const fsDesk   =document.getElementById('fsDesk');
+
+  const drawer=document.getElementById('drawer');
+  const drawerHandle=document.getElementById('drawerHandle');
+  const nub=document.getElementById('nub');
+  const mModel=document.getElementById('mModel');
+
+  // Mobile controls
+  const mSpeed=document.getElementById('mSpeed');
+  const mSpeedNum=document.getElementById('mSpeedNum');
+  const mTrail=document.getElementById('mTrail');
+  const mTrailNum=document.getElementById('mTrailNum');
+  const mScale=document.getElementById('mScale');
+  const mScaleNum=document.getElementById('mScaleNum');
+  const mStarMode=document.getElementById('mStarMode');
+  const mPrecMultSel=document.getElementById('mPrecMult');
+
+  const mTrails=document.getElementById('mTrails'); const mOrbits=document.getElementById('mOrbits');
+  const mLabels=document.getElementById('mLabels'); const mGrid=document.getElementById('mGrid');
+  const mStars=document.getElementById('mStars');
+  const mSunGrade=document.getElementById('mSunGrade');
+  const mPlayPause=document.getElementById('mPlayPause');
+  const mReset=document.getElementById('mReset'); const mSnap=document.getElementById('mSnap');
+  const mFS=document.getElementById('mFS'); const mEarthLock=document.getElementById('mEarthLock');
+
+  /* Day controls */
+  const dayModeSel = document.getElementById('dayMode');
+  const mDayMode   = document.getElementById('mDayMode');
+
+  /* ---------- Mobile UI ---------- */
+  const uaMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const compactVp = () => Math.min(window.innerWidth, window.innerHeight) < 820;
+  let useMobileUI = uaMobile && compactVp();
+
+  /* ---------- Data ---------- */
+  const COLORS={
+    Sun:'#ffd36b', Mercury:'#a3a3a3', Venus:'#e0c16d', Earth:'#6bc2ff', Mars:'#ff6b6b',
+    Jupiter:'#e8a676', Saturn:'#e6d18a', Uranus:'#90d7ff', Neptune:'#8aa0ff'
+  };
+  const bodies=[
+    {name:'Sun',size:11},
+    {name:'Mercury',a:0.387098,e:0.20563,i:7.005,O:48.331,w:29.124,L0:252.25084,period:87.9691,size:3},
+    {name:'Venus',  a:0.723332,e:0.006772,i:3.395,O:76.680,w:54.852,L0:181.97973,period:224.701,size:4},
+    {name:'Earth',  a:1,e:0.01671,i:0,O:0,w:102.937,L0:100.46435,period:365.256,size:6},
+    {name:'Mars',   a:1.523679,e:0.093412,i:1.85,O:49.558,w:286.502,L0:355.45332,period:686.98,size:4},
+    {name:'Jupiter',a:5.2026,e:0.048393,i:1.303,O:100.556,w:273.867,L0:34.40438,period:4332.59,size:7},
+    {name:'Saturn', a:9.55491,e:0.05415,i:2.485,O:113.715,w:339.392,L0:49.94432,period:10759.22,size:6,rings:true},
+    {name:'Uranus', a:19.2184,e:0.047167,i:0.773,O:74.006,w:96.998,L0:313.23218,period:30685.4,size:6},
+    {name:'Neptune',a:30.1104,e:0.008588,i:1.77,O:131.784,w:276.336,L0:304.88003,period:60189,size:6}
+  ];
+  bodies.forEach(b=>{ if(b.period) b.n=360/b.period; });
+  const trails=new Map(); bodies.forEach(b=>trails.set(b.name,[]));
+
+  // Moon (simple circular Earth-centered)
+  const MOON = { a: 384400/149597870, period:27.321661 };
+  const MEAN_MOON_AU = 0.002569;
+
+  /* ---------- Stars ---------- */
+  const STAR_CATALOG = [
+    {name:'Sirius',   ra:6.752,  dec:-16.716, ly:8.611,  mag:-1.46},
+    {name:'Canopus',  ra:6.240,  dec:-52.696, ly:309.8,  mag:-0.74},
+    {name:'Arcturus', ra:14.258, dec:19.182,  ly:36.7,   mag:-0.05},
+    {name:'Vega',     ra:18.615, dec:38.783,  ly:25.04,  mag:0.03},
+    {name:'Capella',  ra:5.200,  dec:45.997,  ly:42.9,   mag:0.08},
+    {name:'Rigel',    ra:5.242,  dec:-8.201,  ly:864.3,  mag:0.13},
+    {name:'Procyon',  ra:7.656,  dec:5.225,   ly:11.46,  mag:0.38},
+    {name:'Achernar', ra:1.628,  dec:-57.236, ly:140.2,  mag:0.46},
+    {name:'Betelgeuse',ra:5.919, dec:7.407,   ly:642.5,  mag:0.50},
+    {name:'Hadar',    ra:14.063, dec:-60.373, ly:391.4,  mag:0.61},
+    {name:'Altair',   ra:19.846, dec:8.868,   ly:16.73,   mag:0.77},
+    {name:'Aldebaran',ra:4.598,  dec:16.509,  ly:65.23,  mag:0.85},
+    {name:'Spica',    ra:13.420, dec:-11.161, ly:260.9,  mag:0.98},
+    {name:'Antares',  ra:16.496, dec:-26.432, ly:554.5,  mag:1.06},
+    {name:'Pollux',   ra:7.755,  dec:28.026,  ly:33.8,   mag:1.14},
+    {name:'Fomalhaut',ra:22.960, dec:-29.622, ly:25.1,   mag:1.16},
+    {name:'Deneb',    ra:20.691, dec:45.280,  ly:1550.5, mag:1.25},
+    {name:'Regulus',  ra:10.139, dec:11.967,  ly:79.3,   mag:1.35},
+    {name:'Adhara',   ra:6.978,  dec:-28.973, ly:430.5,  mag:1.50},
+    {name:'Castor',   ra:7.576,  dec:31.888,  ly:50.88,  mag:1.58},
+    {name:'Bellatrix',ra:5.418,  dec:6.349,   ly:244.6,  mag:1.64},
+    {name:'Elnath',   ra:5.438,  dec:28.607,  ly:130.5,  mag:1.65},
+    {name:'Mimosa',   ra:12.795, dec:-59.688, ly:277.2,  mag:1.25},
+    {name:'Shaula',   ra:17.560, dec:-37.104, ly:570.5,  mag:1.62},
+    {name:'Gacrux',   ra:12.519, dec:-57.114, ly:88.71,  mag:1.63},
+    {name:'Kochab',   ra:14.845, dec:74.155,  ly:130.9,  mag:2.08},
+    {name:'Alnilam',  ra:5.604,  dec:-1.201,  ly:1343.76,mag:1.69},
+    {name:'Alnair',   ra:22.137, dec:-46.961, ly:101.1,  mag:1.73},
+    {name:'Enif',     ra:21.736, dec:9.875,   ly:688.2,  mag:2.38},
+    {name:'Polaris',  ra:2.530,  dec:89.264,  ly:447.6,  mag:1.98},
+    {name:'Sigma Octantis', ra:21.146, dec:-88.956, ly:280.5, mag:5.47},
+    {name:'Proxima',  ra:14.496, dec:-62.679, ly:4.246,  mag:11.13},
+  ];
+
+  /* ---------- State ---------- */
+  let playing=true, simDays=0;
+  let dps=27.32, trailDays=365, extraScale=8.946;
+  let camOffset={x:0,y:0};
+  let earthLock=true;
+  let sunGrade=false;
+  const J2000=new Date(Date.UTC(2000,0,1,12,0,0)); let epoch=new Date(J2000.getTime());
+
+  let savedBeforeDay = null;
+  let cosmosFocus = false;
+
+  // DPR tracking
+  let DPR = 1;
+  
+  function farCosmosViewActive(){
+  // Hide planets/orbits/trails either in “cosmos focus” (Day ≠ Off) past its threshold,
+  // or in Day=Off past a deeper zoom-out threshold.
+  return (cosmosFocus && extraScale <= COSMOS_HIDE_SCALE) ||
+         (dayMode === 'off' && extraScale <= DAYOFF_HIDE_SCALE);
+  }
+  
+  /* ---------- Time & date helpers ---------- */
+  const DELTA_TT_UTC_AT_J2000 = 64.184;
+  const TAI_UTC_STEPS = [
+    { start: Date.UTC(2006,0,1,0,0,0), offset:33 },
+    { start: Date.UTC(2009,0,1,0,0,0), offset:34 },
+    { start: Date.UTC(2012,6,1,0,0,0), offset:35 },
+    { start: Date.UTC(2015,6,1,0,0,0), offset:36 },
+    { start: Date.UTC(2017,0,1,0,0,0), offset:37 }
+  ];
+  function taiMinusUtcSeconds(dateUTC){
+    let off = 32;
+    const t = dateUTC.getTime();
+    for (let i=0;i<TAI_UTC_STEPS.length;i++){
+      if (t >= TAI_UTC_STEPS[i].start) off = TAI_UTC_STEPS[i].offset; else break;
+    }
+    return off;
+  }
+  function ttMinusUtcSeconds(dateUTC){ return taiMinusUtcSeconds(dateUTC) + 32.184; }
+
+  const dateFmt = new Intl.DateTimeFormat(undefined,{
+    year:'numeric', month:'short', day:'2-digit',
+    hour:'2-digit', minute:'2-digit', second:'2-digit',
+    hour12:false, timeZone:'UTC'
+  });
+  function currentSimUTC(){ return new Date(epoch.getTime() + simDays*864e5); }
+  function updateSimDateUI(){
+    const utc = currentSimUTC();
+    const isKepler = getModel()==='kepler';
+    const shown = isKepler ? new Date(utc.getTime() + ttMinusUtcSeconds(utc)*1000) : utc;
+    const suffix = isKepler ? ' TT' : ' UTC';
+    const theText = dateFmt.format(shown) + suffix;
+    const dEl = document.getElementById('simDate');
+    const mEl = document.getElementById('mSimDate');
+    dEl.textContent = theText; mEl.textContent = theText;
+    const box = dEl.parentElement;
+    if (box) box.title = 'J2000 + simulated days (' + (isKepler ? 'TT' : 'UTC') + ')';
+  }
+  function lockSimDateWidth(){
+    const dEl = document.getElementById('simDate');
+    const mEl = document.getElementById('mSimDate');
+    const sampleUTC = '2099 Dec 31, 23:59:59 UTC';
+    const sampleTT  = '2099 Dec 31, 23:59:59 TT';
+    const prevD = dEl.textContent, prevM = mEl.textContent;
+    dEl.textContent = sampleUTC.length > sampleTT.length ? sampleUTC : sampleTT;
+    mEl.textContent = dEl.textContent;
+    const px = Math.ceil(dEl.getBoundingClientRect().width);
+    dEl.style.minWidth = px + 'px';
+    mEl.style.minWidth = px + 'px';
+    dEl.textContent = prevD || '—'; mEl.textContent = prevM || '—';
+  }
+
+  /* ---------- Day & firmament (incl. precession) ---------- */
+  let dayMode = 'off';
+  const DAY_PERIOD_DAYS = { solar: 1.0, sidereal: 0.9972695663 };
+
+  // Physical precession rate: 50.290966″/year, CCW (negative angle in our screen coords)
+  const ARCSEC_PER_YEAR = 50.290966;
+  const DAYS_PER_YEAR = 365.24219;
+  const PRECESSION_RATE_RAD_PER_DAY = - (ARCSEC_PER_YEAR/3600) * (Math.PI/180) / DAYS_PER_YEAR;
+
+  let precMult = 1000; // visual multiplier (×1 is accurate)
+  const precMultUI = () => { precMultSel.value = String(precMult); mPrecMultSel.value = String(precMult); };
+
+  // firmament angle = thetaBase * simDays + thetaOffset (continuous across changes)
+  let firmamentTheta = 0;
+  let thetaBase = 0;
+  let thetaOffset = 0;
+  function diurnalAngle(){ return firmamentTheta; }
+  function updateFirmamentTheta(){ firmamentTheta = thetaBase * simDays + thetaOffset; }
+
+  function baseForMode(mode){
+    if (mode === 'off') return PRECESSION_RATE_RAD_PER_DAY * precMult;      // ultra-slow CCW
+    const P = DAY_PERIOD_DAYS[mode] || 1;
+    return (2*Math.PI) / P;                                                // daily rotation
+  }
+  function applyFirmamentBase(newBase){
+    // keep current angle; only change how it advances with simDays
+    const current = firmamentTheta;
+    thetaOffset = current - newBase * simDays;
+    thetaBase   = newBase;
+  }
+  function setDayMode(newMode){
+    dayMode = newMode;
+    applyFirmamentBase(baseForMode(dayMode));
+    syncDayModeUI();
+    if (dayMode==='off') exitCosmosFocus(); else enterCosmosFocus(); // lock & scale for star view
+  }
+  function setPrecessionScale(mult){
+    const m = Number(mult)||1;
+    precMult = m;
+    if (dayMode === 'off'){
+      applyFirmamentBase(baseForMode(dayMode)); // re-anchor without jumping
+    }
+    syncPrecessionUI();
+  }
+  function syncPrecessionUI(){
+    precMultUI();
+    const off = (dayMode !== 'off');
+    precMultSel.disabled = off; mPrecMultSel.disabled = off;
+    precMultSel.parentElement.style.opacity = off ? 0.5 : 1;
+    mPrecMultSel.parentElement.style.opacity = off ? 0.5 : 1;
+  }
+
+  const LY_TO_AU = 63241.077;
+  const REDUCTION = 42633;
+  const LY_TO_AU_REDUCED = LY_TO_AU / REDUCTION;
+  const AU_AT_POINT_ONE_LY = LY_TO_AU * 0.1;
+  let starMode = 'consensus';
+  function syncStarModeUI(){ starModeSel.value = starMode; mStarMode.value = starMode; }
+  function starDistanceAU(star){ return star.ly * (starMode==='consensus' ? LY_TO_AU : LY_TO_AU_REDUCED); }
+
+  /* ---------- UI helpers ---------- */
+  function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+  function fmtScale(x){
+    if (x >= 0.1) return x.toFixed(3);
+    if (x >= 0.001) return x.toFixed(5);
+    return x.toExponential(2);
+  }
+  function currentMinScale(){
+    if (dayMode === 'off') return MIN_SCALE_DAY_OFF;
+    return (starMode === 'reduced') ? MIN_SCALE_REDUCED : MIN_SCALE_FREE;
+  }
+  function applyScaleClamp(){
+    const min = currentMinScale();
+    scaleEl.min = String(min); mScale.min = String(min);
+    if (extraScale < min) setScale(min);
+  }
+  function setDps(v){
+    dps = clamp(Number(v)||0, parseFloat(speedEl.min), parseFloat(speedEl.max));
+    speedEl.value = dps.toFixed(2); speedNum.value = dps.toFixed(2);
+    mSpeed.value = dps.toFixed(2);  mSpeedNum.value = dps.toFixed(2);
+  }
+  function setTrail(v){
+    const min = parseFloat(trailEl.min)||5, max = parseFloat(trailEl.max)||MAX_TRAIL_DAYS;
+    trailDays = Math.round(clamp(Number(v)||0, min, max));
+    trailEl.value  = String(trailDays); trailNum.value = String(trailDays);
+    mTrail.value   = String(trailDays); mTrailNum.value= String(trailDays);
+  }
+  function setScale(v){
+    const min = currentMinScale();
+    const max = MAX_SCALE;
+    extraScale = clamp(Number(v)||0, min, max);
+    const s = fmtScale(extraScale);
+    scaleEl.value  = extraScale; scaleNum.value = s;
+    mScale.value   = extraScale; mScaleNum.value = s;
+  }
+  function syncUIFromState(){
+    setDps(dps); setTrail(trailDays); setScale(extraScale);
+    toggleLock.checked = earthLock; mEarthLock.checked = earthLock;
+    toggleSunGrade.checked = sunGrade; mSunGrade.checked = sunGrade;
+    syncDayModeUI(); syncStarModeUI(); syncPrecessionUI();
+  }
+  function syncDayModeUI() {
+    dayModeSel.value = dayMode; mDayMode.value = dayMode;
+    
+    starModeSel.disabled = false; mStarMode.disabled = false;
+    applyScaleClamp();
+  }
+  syncUIFromState();
+
+  /* ---------- Mode application ---------- */
+  function applyUIMode() {
+    const hdr = document.querySelector('header');
+    if (uaMobile && compactVp()){
+      hdr.style.display = 'none';
+      drawer.hidden=false; drawer.classList.remove('open'); drawer.style.display='none';
+      nub.hidden=false; nub.classList.remove('hide'); nub.setAttribute('aria-expanded','false');
+    } else {
+      hdr.style.display = 'flex';
+      drawer.classList.remove('open'); drawer.style.display='none'; drawer.hidden = true;
+      nub.hidden = true;
+    }
+    toggleLock.checked = earthLock; mEarthLock.checked = earthLock;
+    toggleSunGrade.checked = sunGrade; mSunGrade.checked = sunGrade;
+    lockSimDateWidth();
+  }
+  applyUIMode();
+
+  window.addEventListener('resize', () => {
+    applyUIMode();
+    resize();
+  });
+
+  /* ---------- Background stars ---------- */
+  const starLayers=[[],[],[]];
+  function seedStars(){
+    const w=canvas.clientWidth,h=canvas.clientHeight;
+    const n=uaMobile?90:160;
+    const R = Math.hypot(w, h)/2 + 40;
+    for(let l=0;l<3;l++){
+      starLayers[l]=[];
+      for(let i=0;i<n;i++){
+        const ang = Math.random()*Math.PI*2;
+        const rad = R * Math.pow(Math.random(), 0.6);
+        const sz  = (Math.random()*1.5+0.2)*(l+1)/2;
+        const a   = 0.35 + Math.random()*0.55;
+        starLayers[l].push({ang, rad, sz, a});
+      }
+    }
+  }
+  function resize(){
+    const sys=window.devicePixelRatio||1, dpr=Math.max(1,sys);
+    const r=canvas.getBoundingClientRect();
+    canvas.width=Math.round(r.width*dpr); canvas.height=Math.round(r.height*dpr);
+    DPR = dpr; ctx.setTransform(DPR,0,0,DPR,0,0);
+    seedStars();
+    lockSimDateWidth();
+  }
+  window.addEventListener('resize',resize); resize();
+
+  /* ---------- Math & transforms ---------- */
+  const DEG=Math.PI/180;
+  const norm360=a=>{a%=360; if(a<0)a+=360; return a;};
+  function julianDayUTC(date){
+    let y=date.getUTCFullYear(),m=date.getUTCMonth()+1;
+    const D=date.getUTCDate()+(date.getUTCHours()+(date.getUTCMinutes()+date.getUTCSeconds()/60)/60)/24;
+    if(m<=2){y-=1;m+=12;} const A=Math.floor(y/100),B=2-A+Math.floor(A/4);
+    return Math.floor(365.25*(y+4716))+Math.floor(30.6001*(m+1))+D+B-1524.5;
+  }
+
+  function auToPx(){
+    const margin=30,w=canvas.clientWidth,h=canvas.clientHeight;
+    const minHalf=Math.min(w,h)/2 - margin;
+    return Math.max(1e-12,(minHalf/30.068)*extraScale);
+  }
+  function worldToScreen(wx,wy){
+    const px=auToPx(); const w=canvas.clientWidth,h=canvas.clientHeight;
+    return {sx:wx*px+w/2+camOffset.x, sy:wy*px+h/2+camOffset.y};
+  }
+
+  function posKepler3D(b,d){
+    if(b.name==='Sun') return {x:0,y:0,z:0};
+    const a=b.a,e=b.e,i=b.i*DEG,O=b.O*DEG,w=b.w*DEG;
+    const M0=norm360(b.L0-(b.O+b.w)); const M=norm360(M0+(b.n||0)*d)*DEG;
+    let E=M; for(let k=0;k<8;k++){ const dE=(E-e*Math.sin(E)-M)/(1-e*Math.cos(E)); E-=dE; if(Math.abs(dE)<1e-9)break; }
+    const r=a*(1-e*Math.cos(E)); const nu=Math.atan2(Math.sqrt(1-e*e)*Math.sin(E),Math.cos(E)-e);
+    const u=w+nu,cosO=Math.cos(O),sinO=Math.sin(O),cosi=Math.cos(i),sini=Math.sin(i),cosu=Math.cos(u),sinu=Math.sin(u);
+    return {x:r*(cosO*cosu - sinO*sinu*cosi), y:r*(sinO*cosu + cosO*sinu*cosi), z:r*(sini*sinu)};
+  }
+  function posCircular2D(b,d){
+    if(b.name==='Sun') return {x:0,y:0,z:0};
+    const th=(2*Math.PI*(d/b.period));
+    return {x:b.a*Math.cos(th), y:b.a*Math.sin(th), z:0};
+  }
+  function earthFrame(b,d){
+    const e=bodies[3];
+    const eh=(getModel()==='kepler')?posKepler3D(e,d):posCircular2D(e,d);
+    const hc=(getModel()==='kepler')?posKepler3D(b,d):posCircular2D(b,d);
+    return {x:hc.x-eh.x,y:hc.y-eh.y,z:hc.z-eh.z};
+  }
+  function getModel(){ return (modelSel?.value||mModel?.value||'kepler'); }
+
+  /* ---------- Orbit ring pre-sampling ---------- */
+  const ringSamples=new Map();
+  function orbitalPointFromElements(a,e,iDeg,ODeg,wDeg,nu){
+    const i=iDeg*DEG, O=ODeg*DEG, w=wDeg*DEG;
+    const r=a*(1-e*e)/(1+e*Math.cos(nu));
+    const u=w+nu, cosO=Math.cos(O), sinO=Math.sin(O), cosi=Math.cos(i), sini=Math.sin(i), cosu=Math.cos(u), sinu=Math.sin(u);
+    return { x:r*(cosO*cosu - sinO*sinu*cosi), y:r*(sinO*cosu + cosO*sinu*cosi), z:r*(sini*sinu) };
+  }
+  function buildRings(){
+    ringSamples.clear(); const S=240; const useKepler=getModel()==='kepler';
+    bodies.forEach(b=>{
+      if(b.name==='Sun') return; const pts=[];
+      if(useKepler){
+        for(let s=0;s<=S;s++){
+          const nu=(s/S)*2*Math.PI,a=b.a,e=b.e;
+          const P = orbitalPointFromElements(a,e,b.i,b.O,b.w,nu);
+          pts.push({x:P.x,y:P.y});
+        }
+      }else{
+        for(let s=0;s<=S;s++){ const th=(s/S)*2*Math.PI; pts.push({x:b.a*Math.cos(th), y:b.a*Math.sin(th)}); }
+      }
+      ringSamples.set(b.name,pts);
+    });
+  }
+  buildRings();
+
+  /* ---------- Interactions ---------- */
+  function zoomAtScreen(factor, sx, sy){
+    const px=auToPx();
+    const w=canvas.clientWidth,h=canvas.clientHeight;
+    const wx=(sx-w/2-camOffset.x)/px, wy=(sy-h/2-camOffset.y)/px;
+    setScale(extraScale * factor);
+    const nx=wx*auToPx()+w/2+camOffset.x, ny=wy*auToPx()+h/2+camOffset.y;
+    camOffset.x += (sx - nx); camOffset.y += (sy - ny);
+  }
+
+  // Desktop
+  let mouseDragging=false,lastMouse={x:0,y:0};
+  canvas.addEventListener('mousedown', e=>{ if(useMobileUI||earthLock) return; mouseDragging=true; lastMouse={x:e.clientX,y:e.clientY}; });
+  window.addEventListener('mouseup', ()=>{ mouseDragging=false; });
+  canvas.addEventListener('mousemove', e=>{ if(useMobileUI) return; if(mouseDragging){ camOffset.x += e.clientX-lastMouse.x; camOffset.y += e.clientY-lastMouse.y; lastMouse={x:e.clientX,y:e.clientY}; } });
+  canvas.addEventListener('wheel', e=>{ if(useMobileUI) return; e.preventDefault(); const f=(e.deltaY>0?0.9:1.1); const sx=earthLock?canvas.clientWidth/2:e.clientX; const sy=earthLock?canvas.clientHeight/2:e.clientY; zoomAtScreen(f,sx,sy); }, {passive:false});
+
+  // Mobile drawer
+  nub?.addEventListener('click', ()=>{ drawer.style.display='block'; drawer.classList.add('open'); nub.classList.add('hide'); nub.setAttribute('aria-expanded','true'); });
+  drawerHandle?.addEventListener('click', ()=>{ drawer.classList.remove('open'); drawer.style.display='none'; nub.classList.remove('hide'); nub.setAttribute('aria-expanded','false'); });
+
+  // Touch
+  let tState = { oneFinger:false, last1:null, twoFinger:false, lastCenter:null, lastDist:0 };
+  const pinchCenter = t => ({ x:(t[0].clientX+t[1].clientX)/2, y:(t[0].clientY+t[1].clientY)/2 });
+  const pinchDistance = t => Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY);
+  canvas.addEventListener('touchstart', (e)=>{ if(!useMobileUI) return; if(e.touches.length===1 && !earthLock){ tState.oneFinger=true; tState.last1={x:e.touches[0].clientX,y:e.touches[0].clientY}; } if(e.touches.length===2){ e.preventDefault(); tState.oneFinger=false; tState.twoFinger=true; tState.lastCenter=pinchCenter(e.touches); tState.lastDist=pinchDistance(e.touches); } }, {passive:false});
+  canvas.addEventListener('touchmove', (e)=>{ if(!useMobileUI) return; if(tState.oneFinger && e.touches.length===1 && !earthLock){ const p={x:e.touches[0].clientX,y:e.touches[0].clientY}; camOffset.x+=p.x-tState.last1.x; camOffset.y+=p.y-tState.last1.y; tState.last1=p; } if(tState.twoFinger && e.touches.length===2){ e.preventDefault(); const center=pinchCenter(e.touches), dist=pinchDistance(e.touches), factor=dist/Math.max(1,tState.lastDist); const sx=earthLock?canvas.clientWidth/2:center.x; const sy=earthLock?canvas.clientHeight/2:center.y; zoomAtScreen(factor,sx,sy); if(!earthLock){ camOffset.x += (center.x - tState.lastCenter.x); camOffset.y += (center.y - tState.lastCenter.y); } tState.lastCenter=center; tState.lastDist=dist; } }, {passive:false});
+  canvas.addEventListener('touchend', ()=>{ if(!useMobileUI) return; tState={oneFinger:false,last1:null,twoFinger:false,lastCenter:null,lastDist:0}; });
+
+  /* ---------- Sun Gradient toggle availability ---------- */
+  function updateSunGradientToggleAvailability(){
+    const circular = getModel() === 'circular';
+    if (circular){
+      sunGrade = false;
+      toggleSunGrade.checked=false; toggleSunGrade.disabled=true; toggleSunGrade.parentElement.style.opacity=0.5;
+      mSunGrade.checked=false; mSunGrade.disabled=true; mSunGrade.parentElement.style.opacity=0.5;
+    }else{
+      toggleSunGrade.disabled=false; toggleSunGrade.parentElement.style.opacity=1;
+      mSunGrade.disabled=false; mSunGrade.parentElement.style.opacity=1;
+    }
+  }
+
+  /* ---------- Buttons & inputs ---------- */
+  function resetTrails(){ bodies.forEach(b=>trails.set(b.name,[])); }
+  function toggleFullscreen(){ const root=document.documentElement; (document.fullscreenElement ? document.exitFullscreen() : (root.requestFullscreen?.()||root.webkitRequestFullscreen?.())); }
+
+  // Day-view helpers for star-mode
+  function enterCosmosFocus(){
+    if (!savedBeforeDay) savedBeforeDay = { dps, scale: extraScale, cam:{...camOffset} };
+    setDps(0.05);
+    cosmosFocus = true;
+    earthLock = true; toggleLock.checked=true; mEarthLock.checked=true;
+    camOffset = {x:0,y:0};
+    applyScaleClamp();
+    if (starMode === 'consensus') setScale(8.52e-6); else setScale(0.02850);
+  }
+  function exitCosmosFocus(){
+    cosmosFocus = false;
+    if (savedBeforeDay){
+      setDps(savedBeforeDay.dps);
+      setScale(savedBeforeDay.scale);
+      camOffset = {...savedBeforeDay.cam};
+      savedBeforeDay = null;
+    }
+    applyScaleClamp();
+  }
+
+  // Wiring
+  modelSel.addEventListener('change', ()=>{ buildRings(); updateSunGradientToggleAvailability(); resetTrails(); updateSimDateUI(); });
+  speedEl.addEventListener('input',()=> setDps(speedEl.value));
+  trailEl.addEventListener('input',()=>{ setTrail(trailEl.value); resetTrails(); });
+  scaleEl.addEventListener('input',()=> setScale(scaleEl.value));
+  speedNum.addEventListener('change',()=> setDps(speedNum.value));
+  trailNum.addEventListener('change',()=>{ setTrail(trailNum.value); resetTrails(); });
+  scaleNum.addEventListener('change',()=>{ const v=parseFloat(scaleNum.value); if(!isNaN(v)) setScale(v); });
+
+  toggleLock.addEventListener('change',()=>{ earthLock=toggleLock.checked; mEarthLock.checked=earthLock; });
+  mEarthLock.addEventListener('change',()=>{ earthLock=mEarthLock.checked; toggleLock.checked=earthLock; });
+
+  toggleSunGrade.addEventListener('change',()=>{ sunGrade=toggleSunGrade.checked; mSunGrade.checked=sunGrade; });
+  playPause.addEventListener('click',()=>{ playing=!playing; playPause.textContent=playing?'⏯':'⏯'; mPlayPause.textContent=playPause.textContent; });
+  resetBtn.addEventListener('click',()=>{ simDays=0; camOffset={x:0,y:0}; resetTrails(); });
+
+  snapBtn.addEventListener('click',()=>{ const a=document.createElement('a'); a.href=canvas.toDataURL('image/png'); a.download='geostatic.png'; a.click(); });
+  fsDesk.addEventListener('click',toggleFullscreen);
+
+  dayModeSel.addEventListener('change', ()=> setDayMode(dayModeSel.value));
+  mDayMode   .addEventListener('change', ()=> setDayMode(mDayMode.value));
+
+  precMultSel.addEventListener('change', ()=> setPrecessionScale(precMultSel.value));
+  mPrecMultSel.addEventListener('change', ()=> setPrecessionScale(mPrecMultSel.value));
+
+  starModeSel.addEventListener('change', ()=>{
+    starMode = starModeSel.value; syncStarModeUI(); applyScaleClamp();
+    if (dayMode!=='off') enterCosmosFocus();
+  });
+  mStarMode.addEventListener('change', ()=>{
+    starMode = mStarMode.value;   syncStarModeUI(); applyScaleClamp();
+    if (dayMode!=='off') enterCosmosFocus();
+  });
+
+  mModel.addEventListener('change',()=>{ modelSel.value=mModel.value; buildRings(); updateSunGradientToggleAvailability(); resetTrails(); updateSimDateUI(); });
+  mSpeed.addEventListener('input',()=> setDps(mSpeed.value));
+  mTrail.addEventListener('input',()=>{ setTrail(mTrail.value); resetTrails(); });
+  mScale.addEventListener('input',()=> setScale(mScale.value));
+  mSpeedNum.addEventListener('change',()=> setDps(mSpeedNum.value));
+  mTrailNum.addEventListener('change',()=>{ setTrail(mTrailNum.value); resetTrails(); });
+  mScaleNum.addEventListener('change',()=>{ const v=parseFloat(mScaleNum.value); if(!isNaN(v)) setScale(v); });
+
+  mTrails.addEventListener('change',()=>{ toggleTrails.checked=mTrails.checked; });
+  mOrbits.addEventListener('change',()=>{ toggleOrbits.checked=mOrbits.checked; });
+  mLabels.addEventListener('change',()=>{ toggleLabels.checked=mLabels.checked; });
+  mGrid  .addEventListener('change',()=>{ toggleGrid.checked=mGrid.checked; });
+  mStars .addEventListener('change',()=>{ toggleStars.checked=mStars.checked; });
+  mSunGrade.addEventListener('change',()=>{ sunGrade=mSunGrade.checked; toggleSunGrade.checked=sunGrade; });
+  mPlayPause.addEventListener('click',()=>{ playing=!playing; mPlayPause.textContent=playing?'⏯':'⏯'; playPause.textContent=mPlayPause.textContent; });
+  mReset.addEventListener('click',()=>{ simDays=0; camOffset={x:0,y:0}; resetTrails(); });
+  mSnap .addEventListener('click',()=>{ const a=document.createElement('a'); a.href=canvas.toDataURL('image/png'); a.download='geostatic.png'; a.click(); });
+  mFS   .addEventListener('click',toggleFullscreen);
+
+  /* ---------- Backdrop ---------- */
+  function drawBackdrop(){
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    const lg = ctx.createLinearGradient(0, 0, 0, h);
+    lg.addColorStop(0.00, '#091a35'); lg.addColorStop(1.00, '#050f22');
+    ctx.fillStyle = lg; ctx.fillRect(0, 0, w, h);
+
+    const cx = w/2 + camOffset.x, cy = h/2 + camOffset.y;
+    const glowR = Math.min(w, h) * 0.85;
+    const rg = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowR);
+    rg.addColorStop(0.00, 'rgba(20,46,92,0.35)');
+    rg.addColorStop(0.50, 'rgba(11,31,66,0.10)');
+    rg.addColorStop(1.00, 'rgba(0,0,0,0)');
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.fillStyle = rg; ctx.fillRect(0, 0, w, h);
+    const vigInner = Math.min(w, h) * 0.60, vigOuter = Math.min(w, h) * 0.98;
+    const vg = ctx.createRadialGradient(w/2, h/2, vigInner, w/2, h/2, vigOuter);
+    vg.addColorStop(0.00, 'rgba(0,0,0,0.00)'); vg.addColorStop(1.00, 'rgba(0,0,0,0.35)');
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.fillStyle = vg; ctx.fillRect(0, 0, w, h);
+    ctx.restore();
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  /* ---------- Label helpers (with keep-out tags) ---------- */
+  const placedLabelRects = [];
+  const LABEL_PAD = 2;
+
+  function textBox(text, font){
+    ctx.save();
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    ctx.font = font;
+    const m = ctx.measureText(text);
+    const h = (m.actualBoundingBoxAscent||9) + (m.actualBoundingBoxDescent||3);
+    const w = m.width;
+    ctx.restore();
+    return {w,h};
+  }
+  function rectsOverlap(a,b){
+    return !(a.x + a.w + LABEL_PAD <= b.x - LABEL_PAD ||
+             b.x + b.w + LABEL_PAD <= a.x - LABEL_PAD ||
+             a.y + a.h + LABEL_PAD <= b.y - LABEL_PAD ||
+             b.y + b.h + LABEL_PAD <= a.y - LABEL_PAD);
+  }
+  function canPlaceRect(r, opts={}){
+    for(const q of placedLabelRects){
+      if (opts.ignoreEarthKeepout && q.tag === 'earth-keepout') continue;
+      if(rectsOverlap(r,q)) return false;
+    }
+    return true;
+  }
+  function drawAt(sx, sy, text, font, fillStyle, strokeStyle, lineWidth){
+    ctx.save();
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    ctx.font = font; ctx.textAlign='left'; ctx.textBaseline='middle';
+    if (strokeStyle){ ctx.strokeStyle = strokeStyle; ctx.lineWidth=lineWidth||3; ctx.strokeText(text, sx, sy); }
+    ctx.fillStyle = fillStyle || '#cbd5e1';
+    ctx.fillText(text, sx, sy);
+    ctx.restore();
+  }
+  function placeAndDrawLabel(sx, sy, text, font, fillStyle, strokeStyle, lineWidth, opts={}){
+    const {w,h} = textBox(text, font);
+    const rect = {x:sx, y:sy - h/2, w, h, tag: opts.tag};
+    if (!canPlaceRect(rect, opts)) return false;
+    drawAt(sx, sy, text, font, fillStyle, strokeStyle, lineWidth);
+    placedLabelRects.push(rect);
+    return true;
+  }
+  function placeLabelAlways(sx, sy, text, font, fillStyle, strokeStyle, lineWidth, opts={}){
+    const {w,h} = textBox(text, font);
+    drawAt(sx, sy, text, font, fillStyle, strokeStyle, lineWidth);
+    placedLabelRects.push({x:sx, y:sy - h/2, w, h, tag: opts.tag});
+    return {w,h};
+  }
+
+  /* ---------- Stars ---------- */
+  const TALL_TICK_STEP = Math.PI / 2;
+
+  function starLabelMagLimit(){
+    return (extraScale < 0.03) ? 2.2 : 0.8;
+  }
+
+  function drawStars(){
+    if (toggleStars && !toggleStars.checked) return;
+    const w=canvas.clientWidth,h=canvas.clientHeight;
+    const theta = diurnalAngle();
+
+    // Rotating sparkle layers (parallax-ish)
+    for(let l=0;l<3;l++){
+      const layer=starLayers[l];
+      const par=1 + l*0.2;
+      const cx = w/2 + camOffset.x/par;
+      const cy = h/2 + camOffset.y/par;
+      ctx.save(); ctx.fillStyle='#cfe6ff';
+      for(const st of layer){
+        const ang = st.ang + theta;
+        const x = cx + Math.cos(ang)*st.rad;
+        const y = cy + Math.sin(ang)*st.rad;
+        ctx.globalAlpha=st.a*0.6;
+        ctx.beginPath(); ctx.arc(x, y, st.sz, 0, Math.PI*2); ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // Catalog stars
+    const labelLimit = starLabelMagLimit();
+    const alwaysLabel = new Set(['Polaris','Sigma Octantis', 'Proxima', 'Enif']);
+    for(const st of STAR_CATALOG){
+      const rAU = starDistanceAU(st);
+      const angle = (st.ra * (Math.PI/12)) + theta; // rotate with firmament
+      const xAU = Math.cos(angle) * rAU;
+      const yAU = Math.sin(angle) * rAU;
+      const p = worldToScreen(xAU, yAU);
+
+      const size = Math.max(1, 3 - 0.4*st.mag);
+      ctx.globalAlpha = 0.9; ctx.fillStyle = '#e7eefc';
+      ctx.beginPath(); ctx.arc(p.sx, p.sy, size, 0, Math.PI*2); ctx.fill();
+
+      const showLabel = (!toggleLabels || toggleLabels.checked) &&
+                        (st.mag <= labelLimit || alwaysLabel.has(st.name));
+      if (showLabel){
+        const font='11px system-ui,Segoe UI,Roboto,Arial';
+        placeAndDrawLabel(p.sx+6, p.sy, st.name, font, '#e7eefc', 'rgba(0,0,0,.55)', 3);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function niceStep(raw){
+    const exp = Math.floor(Math.log10(raw));
+    const base = Math.pow(10, exp);
+    const m = raw / base;
+    let mant;
+    if (m <= 1) mant = 1;
+    else if (m <= 2) mant = 2;
+    else if (m <= 2.5) mant = 2.5;
+    else if (m <= 5) mant = 5;
+    else mant = 10;
+    return mant * base;
+  }
+
+  /* --------- AU/LY GRID ---------- */
+  function drawGrid(pxPerAu){
+    if (toggleGrid && !toggleGrid.checked) return;
+
+    const w=canvas.clientWidth,h=canvas.clientHeight;
+    const cx = w/2+camOffset.x, cy = h/2+camOffset.y;
+    const maxRpx = Math.max(w,h);
+    const maxAu  = maxRpx / pxPerAu;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    const AU2LY = 1/LY_TO_AU;
+    const rBoundaryPx = AU_AT_POINT_ONE_LY * pxPerAu;
+
+    function drawRingLabelRight(r, label, y=0){
+      ctx.globalAlpha = 0.95;
+      ctx.save();
+      ctx.textAlign='left'; ctx.textBaseline='middle';
+      ctx.fillText(label, r + LABEL_R_OFFSET_PX, y);
+      ctx.restore();
+    }
+
+    const drawAU = (rMaxAu) => {
+      const rawStepAu = TARGET_GRID_SPACING_PX / Math.max(pxPerAu,1e-12);
+
+      let stepAU;
+      if (rMaxAu <= 0.005) stepAU = 0.0005;
+      else if (rMaxAu <= 0.02) stepAU = 0.001;
+      else if (rMaxAu <= 0.2) stepAU = 0.01;
+      else stepAU = niceStep(rawStepAu);
+
+      if (rMaxAu >= 1000 && rMaxAu <= 6000 && (100*pxPerAu) >= MIN_LABEL_SPACING_PX) stepAU = 100;
+
+      let rings = Math.floor(rMaxAu/stepAU);
+      while (rings > MAX_RINGS) { stepAU *= 2; rings = Math.floor(rMaxAu/stepAU); }
+
+      const pxStep = stepAU * pxPerAu;
+      const labelEvery = Math.max(1, Math.ceil(MIN_LABEL_SPACING_PX / pxStep));
+
+      ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--grid');
+      ctx.lineWidth=1; ctx.font='10px system-ui,Segoe UI,Roboto,Arial';
+      ctx.fillStyle='#4b5d89'; ctx.textBaseline='middle';
+
+      for (let k=1; k*stepAU<=rMaxAu; k++){
+        const au = k*stepAU;
+        const r = au*pxPerAu;
+        ctx.globalAlpha = (k % labelEvery === 0) ? 0.9 : 0.35;
+        ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.stroke();
+
+        if (k % labelEvery === 0 && r > 20){
+          let label;
+          if (au>=1000) {
+            label = (au/1000).toFixed(au % 100 === 0 ? 1 : 2) + 'k AU';
+          } else if (au < 0.01) {
+            label = au.toFixed(4) + ' AU';
+          } else if (au < 1) {
+            label = au.toFixed(2) + ' AU';
+          } else if (au < 10) {
+            label = au.toFixed(1) + ' AU';
+          } else if (Math.abs(Math.round(au)-au)<1e-6) {
+            label = Math.round(au)+' AU';
+          } else {
+            label = au.toFixed(1)+' AU';
+          }
+          const nearBoundary = Math.abs(rBoundaryPx - r) <= (MIN_LABEL_SPACING_PX + 6);
+          const y = nearBoundary ? -BOUNDARY_LABEL_Y : 0;
+          drawRingLabelRight(r, label, y);
+        }
+      }
+    };
+
+    const drawLY = (rMinAu, rMaxAu) => {
+      const minLy = Math.max(0.1, rMinAu * AU2LY);
+      const maxLy = rMaxAu * AU2LY;
+
+      const rawStepLy = (TARGET_GRID_SPACING_PX / Math.max(pxPerAu,1e-12)) * AU2LY;
+      let stepLy = niceStep(rawStepLy);
+      let rings = Math.floor((maxLy - minLy)/stepLy);
+      while (rings > MAX_RINGS) { stepLy *= 2; rings = Math.floor((maxLy - minLy)/stepLy); }
+
+      const pxStep = stepLy * LY_TO_AU * pxPerAu;
+      const labelEvery = Math.max(1, Math.ceil(MIN_LABEL_SPACING_PX / pxStep));
+
+      ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--grid');
+      ctx.lineWidth=1; ctx.font='10px system-ui,Segoe UI,Roboto,Arial';
+      ctx.fillStyle='#4b5d89'; ctx.textBaseline='middle';
+
+      if (minLy <= 0.1000001){
+        const r = AU_AT_POINT_ONE_LY * pxPerAu;
+        ctx.globalAlpha=0.9;
+        ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.stroke();
+        if (r >= POINT_ONE_LY_LABEL_MIN_R_PX){
+          drawRingLabelRight(r, '0.10 ly', +BOUNDARY_LABEL_Y);
+        }
+      }
+
+      let k=0, ly = (Math.floor(minLy/stepLy)+1)*stepLy;
+      while (ly <= maxLy + 1e-12){
+        const rr = (ly*LY_TO_AU)*pxPerAu;
+        ctx.globalAlpha = (k % labelEvery === 0) ? 0.9 : 0.35;
+        ctx.beginPath(); ctx.arc(0,0,rr,0,Math.PI*2); ctx.stroke();
+
+        if (k % labelEvery === 0 && rr > 20){
+          const label = (ly < 1) ? ly.toFixed(2)+' ly'
+                       : (ly < 10) ? ly.toFixed(1)+' ly'
+                       : Math.round(ly)+' ly';
+          drawRingLabelRight(rr, label, 0);
+        }
+        k++; ly += stepLy;
+      }
+    };
+
+    if (maxAu <= AU_AT_POINT_ONE_LY){ drawAU(maxAu); }
+    else { drawAU(AU_AT_POINT_ONE_LY); drawLY(AU_AT_POINT_ONE_LY, maxAu); }
+
+    ctx.strokeStyle='#203564'; ctx.globalAlpha=0.9;
+    ctx.beginPath(); ctx.moveTo(-w,0); ctx.lineTo(w,0); ctx.moveTo(0,-h); ctx.lineTo(0,h); ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function drawDayDial(d){
+    if (dayMode === 'off') return;
+    const w=canvas.clientWidth,h=canvas.clientHeight;
+    const cx = w/2 + camOffset.x, cy = h/2 + camOffset.y;
+    const r = 46, theta = diurnalAngle();
+
+    ctx.save(); ctx.translate(cx, cy);
+    ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.stroke();
+
+    ctx.save(); ctx.rotate(theta);
+    for (let i=0;i<24;i++){ const L = (i%6===0) ? 8 : 4; ctx.beginPath(); ctx.moveTo(r,0); ctx.lineTo(r+L,0); ctx.stroke(); ctx.rotate(2*Math.PI/24); }
+    ctx.restore();
+
+    const ps = earthFrame(bodies[0], d);
+    const phi = Math.atan2(ps.y, ps.x);
+    const snap = TALL_TICK_STEP * Math.round(phi / TALL_TICK_STEP);
+    ctx.save(); ctx.rotate(snap + theta);
+    ctx.fillStyle = '#ffd36b'; ctx.beginPath(); ctx.arc(r+12, 0, 3, 0, Math.PI*2); ctx.fill(); ctx.restore();
+
+    ctx.fillStyle = '#9aa4b2'; ctx.font = '10px system-ui,Segoe UI,Roboto,Arial';
+    ctx.textAlign='center'; ctx.textBaseline='top';
+    ctx.fillText(dayMode==='sidereal' ? 'Sidereal Day' : 'Solar Day', 0, r+12);
+    ctx.restore();
+  }
+
+  function drawRings(pxPerAu,d){
+    if (farCosmosViewActive()) return;
+    if (toggleOrbits && !toggleOrbits.checked) return;
+    const w=canvas.clientWidth,h=canvas.clientHeight, earth=bodies[3];
+    const eh=(getModel()==='kepler')?posKepler3D(earth,d):posCircular2D(earth,d);
+    ctx.save(); ctx.translate(w/2+camOffset.x,h/2+camOffset.y); ctx.lineWidth=1; ctx.strokeStyle='#253558';
+    bodies.forEach(b=>{
+      if(b.name==='Sun') return; const pts=ringSamples.get(b.name); if(!pts) return;
+      ctx.beginPath();
+      for(let i=0;i<pts.length;i++){
+        const X=(pts[i].x-eh.x)*pxPerAu, Y=(pts[i].y-eh.y)*pxPerAu;
+        if(i===0) ctx.moveTo(X,Y); else ctx.lineTo(X,Y);
+      }
+      ctx.closePath(); ctx.stroke();
+    });
+    ctx.restore();
+  }
+
+  function speedHue01(t){ return 210 - 200 * t; }
+  function speedColor01(t){ const h = speedHue01(clamp(t,0,1)); return `hsl(${h}deg, 90%, 55%)`; }
+
+  function drawSunMarkers(pxPerAu){
+    if (farCosmosViewActive()) return;
+    if (pxPerAu < SUN_MARKERS_MIN_ORBIT_PX) return;
+
+    const w=canvas.clientWidth,h=canvas.clientHeight;
+    const cx = w/2 + camOffset.x, cy = h/2 + camOffset.y;
+
+    const e = bodies[3];
+    const P = orbitalPointFromElements(e.a, e.e, e.i, e.O, e.w, 0);
+    const A = orbitalPointFromElements(e.a, e.e, e.i, e.O, e.w, Math.PI);
+
+    const peri = { x: -P.x*pxPerAu + cx, y: -P.y*pxPerAu + cy };
+    const aphe = { x: -A.x*pxPerAu + cx, y: -A.y*pxPerAu + cy };
+
+    ctx.save();
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    ctx.strokeStyle = 'rgba(107,194,255,.9)';
+    ctx.lineWidth = 2;
+
+    const drawTick = (pt) => {
+      ctx.beginPath();
+      ctx.moveTo(pt.x-6, pt.y); ctx.lineTo(pt.x+6, pt.y); ctx.stroke();
+    };
+    drawTick(peri); drawTick(aphe);
+    ctx.restore();
+
+    const font='10px system-ui,Segoe UI,Roboto,Arial';
+    placeAndDrawLabel(peri.x+8, peri.y, 'Perihelion', font, '#cfe6ff', 'rgba(0,0,0,.5)', 3);
+    placeAndDrawLabel(aphe.x+8, aphe.y, 'Aphelion',  font, '#cfe6ff', 'rgba(0,0,0,.5)', 3);
+  }
+
+  function drawBodies(pxPerAu,d){
+    const w=canvas.clientWidth,h=canvas.clientHeight;
+    const cx = w/2+camOffset.x, cy = h/2+camOffset.y;
+
+    ctx.save(); ctx.translate(cx,cy);
+
+    bodies.forEach(b=>{
+      const p=earthFrame(b,d);
+      const arr=trails.get(b.name);
+      arr.push({x:p.x,y:p.y,z:p.z,t:simDays});
+      while(arr.length && arr[0].t < simDays - trailDays) arr.shift();
+      while(arr.length > MAX_TRAIL_SAMPLES_PER_BODY) arr.shift();
+    });
+
+    if (!farCosmosViewActive() && (!toggleTrails || toggleTrails.checked)){
+      bodies.forEach(b=>{
+        if(b.name==='Earth') return;
+        const arr = trails.get(b.name);
+        if (!arr || arr.length < 2) return;
+
+        if (sunGrade && b.name === 'Sun') {
+          let vmin = Infinity, vmax = 0;
+          for (let i = 1; i < arr.length; i++) {
+            const p0 = arr[i-1], p1 = arr[i];
+            const dt = p1.t - p0.t; if (dt <= 0) continue;
+            const v = Math.hypot(p1.x - p0.x, p1.y - p0.y) / dt;
+            if (v < vmin) vmin = v; if (v > vmax) vmax = v;
+          }
+          if (!(isFinite(vmin)&&isFinite(vmax)) || vmax<=vmin){
+            ctx.strokeStyle = COLORS[b.name]; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.45;
+            ctx.beginPath(); for (let i=0;i<arr.length;i++){ const x=arr[i].x*pxPerAu, y=arr[i].y*pxPerAu; if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); } ctx.stroke(); ctx.globalAlpha = 1;
+          } else {
+            ctx.lineWidth = 1.8; ctx.globalAlpha = 0.9;
+            for (let i = 1; i < arr.length; i++) {
+              const p0 = arr[i-1], p1 = arr[i];
+              const dt = p1.t - p0.t; if (dt <= 0) continue;
+              const v = Math.hypot(p1.x - p0.x, p1.y - p0.y) / dt;
+              const t01 = (v - vmin) / (vmax - vmin);
+              ctx.strokeStyle = speedColor01(t01);
+              ctx.beginPath(); ctx.moveTo(p0.x*pxPerAu, p0.y*pxPerAu); ctx.lineTo(p1.x*pxPerAu, p1.y*pxPerAu); ctx.stroke();
+            }
+            ctx.globalAlpha = 1;
+          }
+        } else {
+          const trailColor = (b.name === 'Venus') ? '#d8b4ff' : COLORS[b.name];
+          ctx.strokeStyle = trailColor; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.45;
+          ctx.beginPath(); for (let i=0;i<arr.length;i++){ const x=arr[i].x*pxPerAu, y=arr[i].y*pxPerAu; if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); } ctx.stroke(); ctx.globalAlpha = 1;
+        }
+      });
+    }
+
+    const order=[...bodies].sort((A,B)=>Math.abs(earthFrame(B,d).z)-Math.abs(earthFrame(A,d).z));
+    const showPlanets = !farCosmosViewActive();
+    const bodyLabels = [];
+    let moonScreen = null;   // screen-space Moon center for labeling
+
+    order.forEach(b=>{
+      if (!showPlanets && b.name!=='Earth') return;
+      const p=earthFrame(b,d);
+      const x=p.x*pxPerAu,y=p.y*pxPerAu;
+      const color=COLORS[b.name]||'#fff';
+
+      if(b.name==='Sun' && showPlanets){
+        const g=ctx.createRadialGradient(x,y,0,x,y,40);
+        g.addColorStop(0,'#ffd36baa'); g.addColorStop(1,'#0000');
+        ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,40,0,Math.PI*2); ctx.fill();
+      }
+
+      const alpha=Math.max(0.3,1-Math.min(0.6,Math.abs(p.z)/10));
+      ctx.globalAlpha=alpha;
+      ctx.fillStyle=color;
+      ctx.beginPath();
+      let size=b.size; if(b.name==='Earth') size=6; if(b.name==='Sun') size=9;
+      ctx.arc(x,y,size,0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1;
+
+      if(b.rings && showPlanets){
+        ctx.save(); ctx.translate(x,y); ctx.rotate(.2);
+        ctx.strokeStyle='rgba(230,209,138,.45)';
+        for(let r=10;r<=18;r+=2){ ctx.beginPath(); ctx.ellipse(0,0,r,r*.5,0,0,Math.PI*2); ctx.stroke(); }
+        ctx.restore();
+      }
+
+      if((!toggleLabels || toggleLabels.checked) && (showPlanets || b.name==='Earth')){
+        bodyLabels.push({ sx:cx + x + 8, sy:cy + y, text:b.name, font:'12px system-ui,Segoe UI,Roboto,Arial' });
+      }
+
+      // capture Moon center for label later
+      if (b.name==='Earth'){
+        const moonRpx = MOON.a * pxPerAu;
+        if (moonRpx > MOON_RING_MIN_PX){
+          ctx.strokeStyle='rgba(180,195,255,.35)';
+          ctx.lineWidth=1;
+          ctx.beginPath(); ctx.arc(0,0, moonRpx, 0, Math.PI*2); ctx.stroke();
+          const ang = 2*Math.PI*(simDays / MOON.period);
+          const mx = Math.cos(ang) * moonRpx;
+          const my = Math.sin(ang) * moonRpx;
+          ctx.fillStyle = '#cfd8ff'; ctx.beginPath(); ctx.arc(mx, my, 3, 0, Math.PI*2); ctx.fill();
+          moonScreen = { x: cx + mx, y: cy + my, r: moonRpx };
+        }
+      }
+    });
+
+    ctx.restore();
+
+    /* ------- label phase (screen space) ------- */
+    if ((!toggleLabels || toggleLabels.checked)){
+      // Earth first (always place + register a central keep-out box)
+      const idxE = bodyLabels.findIndex(L => L.text === 'Earth');
+      if (idxE !== -1){
+        const E = bodyLabels.splice(idxE, 1)[0];
+        placeLabelAlways(E.sx, E.sy, E.text, E.font, '#cbd5e1', null, null, {tag:'earth-label'});
+        placedLabelRects.push({
+          x: (canvas.clientWidth/2 + camOffset.x) - EARTH_LABEL_KEEP_OUT_PX,
+          y: (canvas.clientHeight/2 + camOffset.y) - EARTH_LABEL_KEEP_OUT_PX,
+          w: EARTH_LABEL_KEEP_OUT_PX*2,
+          h: EARTH_LABEL_KEEP_OUT_PX*2,
+          tag: 'earth-keepout'
+        });
+      }
+
+      // Sun next
+      const idxS = bodyLabels.findIndex(L => L.text === 'Sun');
+      if (idxS !== -1){
+        const S = bodyLabels.splice(idxS, 1)[0];
+        placeAndDrawLabel(S.sx, S.sy, S.text, S.font, '#cbd5e1');
+      }
+
+      // Remaining planets
+      for (const L of bodyLabels){
+        placeAndDrawLabel(L.sx, L.sy, L.text, L.font, '#cbd5e1');
+      }
+
+      // Moon label + lunar AU guide (label ALWAYS LEFT of Moon to avoid jitter)
+      if (moonScreen){
+        // ≈ 0.002569 AU guide (ignore Earth keep-out so it shows reliably on mobile)
+        if (moonScreen.r > MOON_GUIDE_MIN_PX){
+          const gx = (canvas.clientWidth/2 + camOffset.x) + moonScreen.r + LABEL_R_OFFSET_PX;
+          const gy = (canvas.clientHeight/2 + camOffset.y) - 6;
+          placeAndDrawLabel(gx, gy, '≈ 0.002569 AU',
+            '10px system-ui,Segoe UI,Roboto,Arial',
+            '#7ea6ff', 'rgba(0,0,0,.5)', 3,
+            { ignoreEarthKeepout:true, tag:'moon-guide' }
+          );
+        }
+
+        // Moon text: only when ring is big enough, always to the LEFT
+        if (moonScreen.r > MOON_LABEL_SHOW_MIN_PX){
+          const font='11px system-ui,Segoe UI,Roboto,Arial';
+          const box={w: textBox('Moon', font).w, h: textBox('Moon', font).h};
+          const sx = moonScreen.x - (box.w + 6); // LEFT side only
+          const sy = moonScreen.y;
+
+          const ignoreKO = moonScreen.r > MOON_IGNORE_KEEP_OUT_MIN_PX;
+          placeAndDrawLabel(
+            sx, sy, 'Moon', font, '#cbd5e1', null, null,
+            { ignoreEarthKeepout: ignoreKO, tag:'moon-label' }
+          );
+        }
+      }
+    }
+  }
+
+  function drawAll(){
+    drawBackdrop();
+    const pxPerAu=auToPx();
+
+    const utc = currentSimUTC();
+    const jdUTC = julianDayUTC(utc);
+    const isKepler = getModel()==='kepler';
+    const jdAdj = isKepler ? (jdUTC + (ttMinusUtcSeconds(utc) - DELTA_TT_UTC_AT_J2000)/86400) : jdUTC;
+    const d = jdAdj - 2451545.0;
+
+    placedLabelRects.length = 0;
+
+    drawGrid(pxPerAu);
+    drawDayDial(d);
+    drawRings(pxPerAu,d);
+    drawBodies(pxPerAu,d);
+    drawSunMarkers(pxPerAu);
+    drawStars();
+
+    updateSimDateUI();
+  }
+
+  /* ---------- Loop ---------- */
+  let lastTs;
+  const MAX_FRAME_GAP_SEC = 0.35;
+  function frame(ts){
+    if(lastTs && playing){
+      let dt = (ts-lastTs)/1000;
+      if (dt > MAX_FRAME_GAP_SEC) dt = 0;
+      simDays += dps * dt;
+    }
+    lastTs = ts;
+
+    updateFirmamentTheta();
+
+    drawAll();
+	requestAnimationFrame(frame);
+    }
+    function resetTiming(){ lastTs = undefined; }
+    document.addEventListener('visibilitychange', resetTiming);
+    window.addEventListener('focus', resetTiming);
+    window.addEventListener('blur', resetTiming);
+    window.addEventListener('pageshow', resetTiming);
+
+  // init
+  applyFirmamentBase(baseForMode(dayMode));
+  applyScaleClamp();
+  updateSunGradientToggleAvailability();
+  updateSimDateUI();
+  lockSimDateWidth();
+  requestAnimationFrame(frame);
+})();
+</script>
+<script src="game-overlay.js"></script>
+</body>
+</html>
