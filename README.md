@@ -1,3 +1,5 @@
+<img src="banner.svg" alt="ECI Frame Geostatic Simulation" width="100%">
+
 # 🌍 ECI Frame Geostatic Simulation v0.1
 
 [![Live Demo](https://img.shields.io/badge/Launch-Simulation-blue?style=for-the-badge&logo=github)](https://albatronicproductions.github.io/ECI-Frame-Geostatic-Simulation-v0.1/)
